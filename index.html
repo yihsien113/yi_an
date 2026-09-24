@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>報價單產生器</title>
+    <style>
+        /* --- 螢幕顯示樣式 --- */
+        body { 
+            background: #525659; /* 像PDF閱讀器的深色背景 */
+            font-family: '微軟正黑體', sans-serif; 
+            margin: 0; 
+            padding: 0;
+            overflow-x: hidden; /* 防止按鈕超出螢幕出現底部橫向卷軸 */
+        }
+        /* 上方工具列 */
+        .toolbar { 
+            text-align: center; padding: 15px; background: #333; color: white; 
+            position: sticky; top: 0; z-index: 100;
+        }
+        .toolbar button { 
+            padding: 8px 16px; margin: 0 5px; cursor: pointer; 
+            font-size: 16px; font-weight: bold; border-radius: 4px; border: none;
+        }
+        .btn-save { background: #2196F3; color: white; }
+        .btn-load { background: #FF9800; color: white; }
+        .btn-print { background: #E91E63; color: white; }
+        
+        /* A4 紙張樣式 */
+        .a4-page { 
+            width: 210mm; min-height: 297mm; 
+            background: white; margin: 20mm auto; padding: 10mm; /* 邊緣距離減少50% */
+            box-sizing: border-box; box-shadow: 0 0 15px rgba(0,0,0,0.5); 
+            position: relative;
+        }
+        
+        /* 標題與資訊區 */
+        .header { text-align: center; margin-bottom: 10px; }
+        .header h1 { margin: 0; font-size: 36px; letter-spacing: 7px; }
+        .info-section { display: flex; justify-content: space-between; margin-bottom: 0px; }
+        .info-box { width: 45%; }
+        .info-line { display: flex; margin-bottom: 10px; align-items: center; }
+        .info-line span { width: 110px; font-weight: bold; }
+        
+        /* 文字輸入區隱形魔法 (支援多行換行) */
+        textarea.editable { 
+            border: 1px solid transparent; padding: 4px; width: 100%; 
+            box-sizing: border-box; background: transparent; 
+            font-family: inherit; font-size: inherit; 
+            resize: none; /* 禁用手動拉伸，改用JS自動長高 */
+            overflow: hidden; min-height: 32px; line-height: 1.5;
+            vertical-align: middle;
+        }
+        textarea.editable:hover, textarea.editable:focus { 
+            border-bottom: 1px dashed #000; outline: none; background: #f9f9f9; 
+        }
+
+        /* 表格樣式 */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
+        th, td { border: 1px solid #333; padding: 6px; text-align: center; vertical-align: middle; }
+        th { background: #f0f0f0; }
+        td.left { text-align: left; }
+        
+        /* --- 操作按鈕與特殊樣式 --- */
+        /* 將按鈕區推到右側灰底白紙外 */
+        .action-td { border: none !important; width: 0 !important; padding: 0 !important; position: relative; }
+        .action-btns { 
+            position: absolute; left: 12mm; top: 50%; transform: translateY(-50%); 
+            display: flex; gap: 4px; width: 90px; white-space: nowrap; align-items: center;
+        }
+        .btn-icon { cursor: pointer; border: none; background: none; font-size: 18px; padding: 2px; }
+        .btn-icon:hover { transform: scale(1.2); }
+        
+        /* 合併儲存格的容器與按鈕共用樣式 (類別與備註共用) */
+        .merge-wrapper { position: relative; height: 100%; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        
+        /* 放在格線上的合併按鈕 */
+        .btn-merge-line {
+            position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%);
+            display: none; background: #fff; border: 1px solid #ff4d4f; color: #ff4d4f;
+            border-radius: 10px; font-size: 11px; padding: 0 6px; cursor: pointer;
+            z-index: 10; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .merge-cell:hover .btn-merge-line { display: block; }
+        .btn-merge-line:hover { background: #fff1f0; }
+
+        /* 放在格線上的切割按鈕 */
+        .btn-split-line {
+            position: absolute; left: 50%; transform: translate(-50%, -50%);
+            display: none; background: #fff; border: 1px solid #1890ff; color: #1890ff;
+            border-radius: 10px; font-size: 11px; padding: 0 6px; cursor: pointer;
+            z-index: 10; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .merge-cell:hover .btn-split-line { display: block; }
+        .btn-split-line:hover { background: #e6f7ff; }
+
+        /* 表格內專用的「常用備註」按鈕 */
+        .btn-quick-note {
+            position: absolute; top: 2px; right: 2px;
+            display: none; background: #fff; border: 1px solid #1890ff; color: #1890ff;
+            border-radius: 4px; font-size: 11px; padding: 2px 4px; cursor: pointer;
+            z-index: 10; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .note-cell:hover .btn-quick-note { display: block; }
+        .btn-quick-note:hover { background: #e6f7ff; }
+
+        /* --- 附件圖片區樣式 --- */
+        .img-preview { 
+            position: relative; 
+            display: inline-block; 
+            width: 48%; /* 預設寬度 */
+            height: 300px; /* 新增預設高度，避免解開比例後圖片縮成一團 */
+            min-width: 15%; 
+            min-height: 50px; /* 限制最小高度 */
+            max-width: 100%; 
+            margin-bottom: 10px;
+            resize: both; /* 改為 both，允許橫向與直向自由拖拉 */
+            overflow: hidden; 
+        }
+        .img-preview:hover {
+            outline: 2px dashed #2196F3; /* 滑鼠移過去提示可拖拉 */
+        }
+        .img-preview img { 
+            width: 100%; 
+            height: 100%; /* 改為 100%，讓圖片高度強制跟著外框走 */
+            object-fit: fill; /* 強制圖片變形填滿，不再保持原比例 */
+            border: 1px solid #ccc; 
+            border-radius: 4px;
+            display: block; 
+            pointer-events: none; 
+        }
+        .btn-del-img { 
+            position: absolute; 
+            top: 5px; 
+            right: 5px; 
+            background: #ff4d4f; 
+            color: white; 
+            cursor: pointer; 
+            border: none; 
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+            line-height: 24px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .btn-del-img:hover { background: #d9363e; transform: scale(1.1); }
+
+        /* --- 常用備註彈出視窗樣式 --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 1000;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 500px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .modal-content h3 { margin-top: 0; margin-bottom: 15px; text-align: center; }
+        .modal-options {
+            max-height: 300px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #eee; padding: 10px; border-radius: 4px;
+        }
+        .modal-options label {
+            display: block; margin-bottom: 10px; cursor: pointer; line-height: 1.4; padding: 5px; border-radius: 4px;
+        }
+        .modal-options label:hover { background: #f0f8ff; }
+        .modal-options input[type="checkbox"] { margin-right: 10px; transform: scale(1.2); }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 10px; }
+        .modal-footer button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
+
+        /* --- 列印模式樣式 --- */
+        @media print {
+            @page { size: A4; margin: 0; }
+            body { background: white; }
+            .toolbar, .no-print { display: none !important; } /* 隱藏所有按鈕 */
+            .a4-page { margin: 0; padding: 7.5mm; box-shadow: none; width: 100%; min-height: auto; }
+            textarea.editable { border: none !important; background: transparent !important; }
+            ::-webkit-input-placeholder { color: transparent; }
+        }
+
+        /* --- 手機版螢幕優化 --- */
+        @media screen and (max-width: 850px) {
+            body { 
+                overflow-x: auto; /* 解除限制，允許手機左右滑動 */
+                padding-bottom: 50px; /* 底部留白，方便手指滑動 */
+            }
+            .a4-page { 
+                width: 800px; /* 在手機上固定為 800px 寬，避免表格被擠壓變形 */
+                margin: 10px 0; /* 移除外框的大留白 */
+                padding: 10mm;
+                transform-origin: top left;
+            }
+            .toolbar {
+                position: fixed; top: auto; bottom: 0; width: 100%; box-sizing: border-box; /* 將工具列移到手機底部，方便單手點擊 */
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 工具列 (印出來時會消失) -->
+    <div class="toolbar no-print">
+        <button class="btn-save" onclick="saveData()">💾 存成專案 (.json)</button>
+        <input type="file" id="loadFile" accept=".json" style="display:none" onchange="loadData(event)">
+        <button class="btn-load" onclick="document.getElementById('loadFile').click()">📂 載入舊報價</button>
+        <button class="btn-print" onclick="window.print()">🖨️ 列印 / 匯出 PDF</button>
+    </div>
+
+    <!-- A4 報價單本體 -->
+    <div class="a4-page">
+        
+        <div class="header">
+            <h1>宜安企業社</h1>
+            <h2>報 價 單</h2>
+        </div>
+
+        <!-- 1. 滿版獨立的客戶與案件名稱輸入區 -->
+        <div class="info-line" style="width: 100%;">
+            <textarea id="cusName" class="editable" rows="1" placeholder="請輸入客戶名稱及案件名稱 (如：X X 營造 - 桃園 X X 工地)" oninput="autoResize(this)" style="padding-left: 0; font-size: 22px; font-weight: bold; text-decoration: underline;"></textarea>
+        </div>
+
+        <div class="info-section">
+            <!-- 2. 左側：聯絡電話 -->
+            <div class="info-box">
+                <div class="info-line"><span>聯絡電話：</span><textarea id="cusPhone" class="editable" rows="1" placeholder="請輸入電話" oninput="autoResize(this)"></textarea></div>
+            </div>
+            <!-- 3. 右側：報價日期 -->
+            <div class="info-box" style="display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-end;">
+                <div class="info-line" style="justify-content: flex-end; width: 100%;">
+                    <span style="font-weight: bold; width: auto;">報價日期：</span>
+                    <textarea id="quoteDate" class="editable" rows="1" placeholder="2026/09/22" oninput="autoResize(this)" style="text-align: right; width: 95px; padding-right: 0;"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <table id="quoteTable">
+            <thead>
+                <tr>
+                    <th width="4%">類別</th>
+                    <th width="28%">品項</th>
+                    <th width="16%">規格</th>
+                    <th width="15%">單價(新台幣)</th>
+                    <th width="9%">數量</th>
+                    <th width="28%">備註</th>
+                    <th class="action-td no-print"></th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- Javascript 會在這裡產生內容 -->
+            </tbody>
+        </table>
+
+        <!-- 底部總備註區 (恢復為原本預設) -->
+        <div style="margin-top: 40px; page-break-inside: avoid;">
+            <h4>備註事項：</h4>
+            <textarea id="notes" class="editable" style="width: 100%; height: 140px; resize: none;" placeholder="在此輸入備註" oninput="autoResize(this)">(1) 以上報價皆不含營業稅，稅金外加。
+(2) 付款條件：月結現金（恕不接受保留款）。
+(3) 通知立斗前請確認現場條件已可施工；現場需【打牆】【墊高】【修改尺寸】，皆需另計費用。
+(4) 本工程利潤微薄，恕不接受扣除清潔費、保險費等任何名目費用。
+(5) 本報價單自報價日起 15 天內有效。</textarea>
+        </div>
+
+        <!-- 附圖區 -->
+        <div style="margin-top: 20px; page-break-inside: avoid;">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <h4 style="margin: 0;">附件圖片：</h4>
+                <button class="no-print" onclick="document.getElementById('imgUpload').click()" style="margin-left: 10px; padding: 4px 8px; cursor: pointer; border: 1px solid #333; background: #fff; border-radius: 4px;">➕ 新增圖片</button>
+            </div>
+            <input type="file" id="imgUpload" accept="image/*" style="display:none" onchange="addImage(event)">
+            <div id="imageContainer" style="display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 15px;">
+            </div>
+        </div>
+    </div>
+
+    <!-- 表格內用 常用備註選擇視窗 -->
+    <div id="notesModal" class="modal-overlay no-print" style="display: none;">
+        <div class="modal-content">
+            <h3>插入常用備註</h3>
+            <div class="modal-options" id="notesOptions">
+                <!-- Javascript 會動態生成核取方塊 -->
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeNotesModal()" style="background: #e0e0e0; color: #333;">取消</button>
+                <button onclick="insertSelectedNotes()" style="background: #2196F3; color: white;">確定帶入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邏輯控制腳本 -->
+    <script>
+        window.onload = function() {
+            const today = new Date();
+            const dateString = today.getFullYear() + '/' + 
+                               String(today.getMonth() + 1).padStart(2, '0') + '/' + 
+                               String(today.getDate()).padStart(2, '0');
+            document.getElementById('quoteDate').value = dateString;
+            addRow(); 
+            autoResize(document.getElementById('notes')); 
+        };
+
+        function autoResize(el) {
+            el.style.height = 'auto'; 
+            el.style.height = (el.scrollHeight) + 'px'; 
+        }
+
+        function addRow() {
+            const tbody = document.getElementById('tableBody');
+            const newTr = generateRowHTML();
+            tbody.insertAdjacentHTML('beforeend', newTr);
+            const addedTr = tbody.lastElementChild;
+            addedTr.querySelectorAll('textarea').forEach(ta => autoResize(ta));
+        }
+
+        // 🖼️ 處理圖片上傳
+        function addImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64Str = e.target.result;
+                renderImage(base64Str);
+            };
+            reader.readAsDataURL(file);
+            event.target.value = ''; 
+        }
+
+        // 🖼️ 將圖片渲染到畫面上
+        function renderImage(base64Str) {
+            const container = document.getElementById('imageContainer');
+            const div = document.createElement('div');
+            div.className = 'img-preview';
+            div.innerHTML = `
+                <button class="btn-del-img no-print" onclick="this.parentElement.remove()" title="刪除圖片">✖</button>
+                <img src="${base64Str}">
+            `;
+            container.appendChild(div);
+        }
+
+        // 產生一列的 HTML 模板
+        function generateRowHTML(cat='', name='', spec='', price='', qty='', note='', hasCat=true, catSpan=1, hasNote=true, noteSpan=1) {
+            let catHtml = '';
+            if (hasCat) {
+                catHtml = `
+                <td class="merge-cell category-cell" rowspan="${catSpan}">
+                    <div class="merge-wrapper">
+                        <textarea class="editable item-cat" rows="1" placeholder="類別" oninput="autoResize(this)" style="width: 25px; text-align: center; font-weight: bold; line-height: 1.2;"></textarea>
+                        ${generateToolsHtml(catSpan, '.category-cell')}
+                    </div>
+                </td>`;
+            }
+
+            let noteHtml = '';
+            if (hasNote) {
+                // 加入 📝 按鈕，觸發時會呼叫 openNotesModal(this)
+                noteHtml = `
+                <td class="left merge-cell note-cell" rowspan="${noteSpan}">
+                    <div class="merge-wrapper">
+                        <button type="button" class="no-print btn-quick-note" onclick="openNotesModal(this)" title="插入常用備註">📝</button>
+                        <textarea class="editable item-note" rows="1" placeholder="備註" oninput="autoResize(this)">${note}</textarea>
+                        ${generateToolsHtml(noteSpan, '.note-cell')}
+                    </div>
+                </td>`;
+            }
+            
+            return `
+                <tr>
+                    ${catHtml}
+                    <td><textarea class="editable item-name" rows="1" placeholder="品項" oninput="autoResize(this)" style="text-align: center;">${name}</textarea></td>
+                    <td><textarea class="editable item-spec" rows="1" placeholder="尺寸" oninput="autoResize(this)" style="text-align: center;">${spec}</textarea></td>
+                    <td><textarea class="editable item-price" rows="1" placeholder="單價" oninput="autoResize(this)" style="text-align: center;">${price}</textarea></td>
+                    <td><textarea class="editable item-qty" rows="1" placeholder="數量" oninput="autoResize(this)" style="text-align: center;">${qty}</textarea></td>
+                    ${noteHtml}
+                    <td class="action-td no-print">
+                        <div class="action-btns">
+                            <button type="button" class="btn-icon" onclick="copyRow(this)" title="複製此列">📄</button>
+                            <button type="button" class="btn-icon" style="color: red;" onclick="addRowBelow(this)" title="在此下方新增一列">➕</button>
+                            <button type="button" class="btn-icon" style="color: red;" onclick="delRow(this)" title="刪除此列">🗑️</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function generateToolsHtml(span, cellClass) {
+            let toolsHtml = '';
+            for (let i = 1; i < span; i++) {
+                let topPercent = (i / span) * 100;
+                toolsHtml += `<button type="button" class="no-print btn-split-line" style="top: ${topPercent}%;" onclick="splitAt(this, ${i}, '${cellClass}')" title="在此處切割">✂️ 切割</button>`;
+            }
+            toolsHtml += `<button type="button" class="no-print btn-merge-line" onclick="mergeDown(this, '${cellClass}')" title="與下方合併">🔽 合併</button>`;
+            return toolsHtml;
+        }
+
+        function mergeDown(btn, cellClass) {
+            const td = btn.closest(cellClass);
+            const tr = td.parentElement;
+            let span = parseInt(td.getAttribute('rowspan')) || 1;
+            
+            let nextTr = tr;
+            for(let i = 0; i < span; i++) {
+                nextTr = nextTr.nextElementSibling;
+                if(!nextTr) {
+                    alert('下方已經沒有可以合併的行數囉！');
+                    return;
+                }
+            }
+            
+            const nextTd = nextTr.querySelector(cellClass);
+            if(nextTd) {
+                const nextSpan = parseInt(nextTd.getAttribute('rowspan')) || 1;
+                td.setAttribute('rowspan', span + nextSpan);
+                nextTd.remove(); 
+                updateRowspanDisplay(td, cellClass);
+            }
+        }
+
+        function splitAt(btn, splitIndex, cellClass) {
+            const td = btn.closest(cellClass);
+            let span = parseInt(td.getAttribute('rowspan')) || 1;
+            if (span <= 1) return;
+
+            let targetTr = td.parentElement;
+            for (let i = 0; i < splitIndex; i++) {
+                targetTr = targetTr.nextElementSibling;
+            }
+
+            td.setAttribute('rowspan', splitIndex);
+            updateRowspanDisplay(td, cellClass);
+
+            const newTd = document.createElement('td');
+            newTd.className = td.className; 
+            const remainingSpan = span - splitIndex;
+            newTd.setAttribute('rowspan', remainingSpan);
+            
+            const placeholder = cellClass === '.category-cell' ? '類別' : '備註';
+            const style = cellClass === '.category-cell' ? 'style="width: 25px; text-align: center; font-weight: bold; line-height: 1.2;"' : '';
+            
+            // 如果切割的是備註欄，補回 📝 按鈕
+            const quickBtn = cellClass === '.note-cell' ? '<button type="button" class="no-print btn-quick-note" onclick="openNotesModal(this)" title="插入常用備註">📝</button>' : '';
+
+            newTd.innerHTML = `
+                <div class="merge-wrapper">
+                    ${quickBtn}
+                    <textarea class="editable ${cellClass === '.category-cell' ? 'item-cat' : 'item-note'}" rows="1" placeholder="${placeholder}" oninput="autoResize(this)" ${style}></textarea>
+                    ${generateToolsHtml(remainingSpan, cellClass)}
+                </div>
+            `;
+            
+            if (cellClass === '.note-cell') {
+                targetTr.insertBefore(newTd, targetTr.querySelector('.action-td'));
+            } else {
+                targetTr.insertBefore(newTd, targetTr.firstElementChild);
+            }
+            
+            targetTr.querySelectorAll('textarea').forEach(ta => autoResize(ta));
+        }
+
+        function updateRowspanDisplay(td, cellClass) {
+            const span = parseInt(td.getAttribute('rowspan')) || 1;
+            const wrapper = td.querySelector('.merge-wrapper');
+            wrapper.querySelectorAll('.btn-merge-line, .btn-split-line').forEach(el => el.remove());
+            wrapper.insertAdjacentHTML('beforeend', generateToolsHtml(span, cellClass));
+        }
+
+        function checkAndMaintainSpanForNewRow(tr, cellClass) {
+            let shouldGenerateCell = true;
+            let prev = tr;
+            let distance = 0;
+            
+            while(prev) {
+                const td = prev.querySelector(cellClass);
+                if(td) {
+                    let span = parseInt(td.getAttribute('rowspan')) || 1;
+                    if (span > distance + 1) {
+                        shouldGenerateCell = false; 
+                        td.setAttribute('rowspan', span + 1); 
+                        updateRowspanDisplay(td, cellClass); 
+                    }
+                    break;
+                }
+                distance++;
+                prev = prev.previousElementSibling;
+            }
+            return shouldGenerateCell;
+        }
+
+        function addRowBelow(btn) {
+            const tr = btn.closest('tr');
+            const hasCat = checkAndMaintainSpanForNewRow(tr, '.category-cell');
+            const hasNote = checkAndMaintainSpanForNewRow(tr, '.note-cell');
+            const newTrHTML = generateRowHTML('', '', '', '', '', '', hasCat, 1, hasNote, 1);
+            tr.insertAdjacentHTML('afterend', newTrHTML);
+            const newTr = tr.nextElementSibling;
+            newTr.querySelectorAll('textarea').forEach(ta => autoResize(ta));
+        }
+
+        function copyRow(btn) {
+            const tr = btn.closest('tr');
+            const cat = tr.querySelector('.item-cat')?.value || '';
+            const name = tr.querySelector('.item-name')?.value || '';
+            const spec = tr.querySelector('.item-spec')?.value || '';
+            const price = tr.querySelector('.item-price')?.value || '';
+            const qty = tr.querySelector('.item-qty')?.value || '';
+            const note = tr.querySelector('.item-note')?.value || '';
+            
+            const hasCat = checkAndMaintainSpanForNewRow(tr, '.category-cell');
+            const hasNote = checkAndMaintainSpanForNewRow(tr, '.note-cell');
+            
+            const newTrHTML = generateRowHTML(cat, name, spec, price, qty, note, hasCat, 1, hasNote, 1);
+            tr.insertAdjacentHTML('afterend', newTrHTML);
+            
+            const newTr = tr.nextElementSibling;
+            newTr.querySelectorAll('textarea').forEach(ta => autoResize(ta));
+        }
+
+        function maintainSpanOnDel(tr, cellClass) {
+            const hasCell = tr.querySelector(cellClass) !== null;
+            if (hasCell) {
+                const td = tr.querySelector(cellClass);
+                const span = parseInt(td.getAttribute('rowspan')) || 1;
+                if (span > 1) {
+                    let nextTr = tr.nextElementSibling;
+                    const newTd = document.createElement('td');
+                    newTd.className = td.className;
+                    newTd.setAttribute('rowspan', span - 1);
+                    newTd.innerHTML = td.innerHTML; 
+                    
+                    if (cellClass === '.note-cell') {
+                        nextTr.insertBefore(newTd, nextTr.querySelector('.action-td'));
+                    } else {
+                        nextTr.insertBefore(newTd, nextTr.firstElementChild);
+                    }
+                    updateRowspanDisplay(newTd, cellClass);
+                }
+            } else {
+                let distance = 1;
+                let prevTr = tr.previousElementSibling;
+                while(prevTr) {
+                    const td = prevTr.querySelector(cellClass);
+                    if (td) {
+                        let span = parseInt(td.getAttribute('rowspan')) || 1;
+                        if (span > distance) {
+                            td.setAttribute('rowspan', span - 1);
+                            updateRowspanDisplay(td, cellClass);
+                            break;
+                        }
+                    }
+                    distance++;
+                    prevTr = prevTr.previousElementSibling;
+                }
+            }
+        }
+
+        function delRow(btn) {
+            const tbody = document.getElementById('tableBody');
+            if (tbody.querySelectorAll('tr').length <= 1) {
+                alert("不可刪除最後一行");
+                return; 
+            }
+            const tr = btn.closest('tr');
+            maintainSpanOnDel(tr, '.category-cell');
+            maintainSpanOnDel(tr, '.note-cell');
+            tr.remove();
+        }
+
+        function saveData() {
+            const data = {
+                cusName: document.getElementById('cusName').value,
+                cusPhone: document.getElementById('cusPhone').value,
+                quoteDate: document.getElementById('quoteDate').value,
+                notes: document.getElementById('notes').value,
+                items: [],
+                images: [] 
+            };
+
+            const rows = document.querySelectorAll('#tableBody tr');
+            rows.forEach(row => {
+                data.items.push({
+                    cat: row.querySelector('.item-cat')?.value || '',
+                    hasCat: row.querySelector('.category-cell') !== null,
+                    catSpan: row.querySelector('.category-cell') ? (parseInt(row.querySelector('.category-cell').getAttribute('rowspan')) || 1) : 0,
+                    
+                    name: row.querySelector('.item-name')?.value || '',
+                    spec: row.querySelector('.item-spec')?.value || '',
+                    price: row.querySelector('.item-price')?.value || '',
+                    qty: row.querySelector('.item-qty')?.value || '',
+                    
+                    note: row.querySelector('.item-note')?.value || '',
+                    hasNote: row.querySelector('.note-cell') !== null,
+                    noteSpan: row.querySelector('.note-cell') ? (parseInt(row.querySelector('.note-cell').getAttribute('rowspan')) || 1) : 0
+                });
+            });
+
+            document.querySelectorAll('#imageContainer img').forEach(img => {
+                data.images.push(img.src);
+            });
+
+            const dataStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `報價單_${data.cusName || '未命名'}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = JSON.parse(e.target.result);
+                document.getElementById('cusName').value = data.cusName || '';
+                document.getElementById('cusPhone').value = data.cusPhone || '';
+                document.getElementById('quoteDate').value = data.quoteDate || '';
+                document.getElementById('notes').value = data.notes || '';
+                
+                const tbody = document.getElementById('tableBody');
+                tbody.innerHTML = ''; 
+                
+                data.items.forEach(item => {
+                    const hasCat = item.hasCat !== undefined ? item.hasCat : true;
+                    const catSpan = item.catSpan || 1;
+                    const hasNote = item.hasNote !== undefined ? item.hasNote : true;
+                    const noteSpan = item.noteSpan || 1;
+
+                    const newTr = generateRowHTML(
+                        item.cat || '', item.name || '', item.spec || '', item.price || '', item.qty || '', item.note || '', 
+                        hasCat, catSpan, hasNote, noteSpan
+                    );
+                    tbody.insertAdjacentHTML('beforeend', newTr);
+                });
+                
+                document.getElementById('imageContainer').innerHTML = '';
+                if (data.images && data.images.length > 0) {
+                    data.images.forEach(base64Str => renderImage(base64Str));
+                }
+
+                document.querySelectorAll('textarea.editable').forEach(ta => autoResize(ta));
+                event.target.value = ''; 
+            };
+            reader.readAsText(file);
+        }
+
+        // --- 表格內專用的常用備註邏輯 ---
+
+        // 📝 表格內常用備註資料庫 (為您的木業/門片工程預設)
+        const commonNotes = [
+            "▲含立斗",
+            "▲含氣密條",
+            "▲無油漆",
+            "▲含安裝五金-自解水平鎖、烤漆雕花丁雙、塑膠門擋(咖)",
+            "▲無門邊油漆",
+            "▲含安裝五金-自解水平鎖、廁所專用丁雙",
+            "▲",
+            
+        ];
+
+        let currentTargetNote = null; // 紀錄當前點擊的是哪一個格子的備註
+
+        // 開啟備註選擇視窗
+        function openNotesModal(btn) {
+            // 找到同一個 wrapper 內的 textarea 元素
+            currentTargetNote = btn.parentElement.querySelector('.item-note');
+            
+            const container = document.getElementById('notesOptions');
+            container.innerHTML = ''; // 清空先前的選項
+            
+            commonNotes.forEach((note, index) => {
+                const label = document.createElement('label');
+                label.innerHTML = `<input type="checkbox" value="${index}"> ${note}`;
+                container.appendChild(label);
+            });
+            
+            document.getElementById('notesModal').style.display = 'flex';
+        }
+
+        // 關閉備註選擇視窗
+        function closeNotesModal() {
+            document.getElementById('notesModal').style.display = 'none';
+            currentTargetNote = null; // 清除紀錄
+        }
+
+        // 確認帶入所選備註
+        function insertSelectedNotes() {
+            if (!currentTargetNote) return;
+
+            const checkboxes = document.querySelectorAll('#notesOptions input:checked');
+            if (checkboxes.length === 0) {
+                closeNotesModal();
+                return;
+            }
+            
+            let currentText = currentTargetNote.value.trim();
+            let additions = [];
+            
+            // 抓取打勾的文字
+            checkboxes.forEach(cb => {
+                additions.push(commonNotes[cb.value]);
+            });
+
+            // 將文字換行附加進去，不覆蓋原來的字
+            if (currentText.length > 0) {
+                currentText += '\n' + additions.join('\n');
+            } else {
+                currentText = additions.join('\n');
+            }
+
+            currentTargetNote.value = currentText;
+            autoResize(currentTargetNote); // 自動撐高格子
+            closeNotesModal();
+        }
+    </script>
+</body>
+</html>
