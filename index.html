@@ -93,16 +93,7 @@
         .merge-cell:hover .btn-split-line { display: block; }
         .btn-split-line:hover { background: #e6f7ff; }
 
-        /* 表格內專用的「常用備註」按鈕 */
-        .btn-quick-note {
-            position: absolute; top: 2px; right: 2px;
-            display: none; background: #fff; border: 1px solid #1890ff; color: #1890ff;
-            border-radius: 4px; font-size: 11px; padding: 2px 4px; cursor: pointer;
-            z-index: 10; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-        }
-        .note-cell:hover .btn-quick-note { display: block; }
-        .btn-quick-note:hover { background: #e6f7ff; }
-
+        /* --- 附件圖片區樣式 --- */
         /* --- 附件圖片區樣式 --- */
         .img-preview { 
             position: relative; 
@@ -113,7 +104,7 @@
             min-height: 50px; /* 限制最小高度 */
             max-width: 100%; 
             margin-bottom: 10px;
-            resize: both; /* 改為 both，允許橫向與直向自由拖拉 */
+            resize: both; /* 【關鍵1】改為 both，允許橫向與直向自由拖拉 */
             overflow: hidden; 
         }
         .img-preview:hover {
@@ -121,8 +112,8 @@
         }
         .img-preview img { 
             width: 100%; 
-            height: 100%; /* 改為 100%，讓圖片高度強制跟著外框走 */
-            object-fit: fill; /* 強制圖片變形填滿，不再保持原比例 */
+            height: 100%; /* 【關鍵2】改為 100%，讓圖片高度強制跟著外框走 */
+            object-fit: fill; /* 【關鍵3】強制圖片變形填滿，不再保持原比例 */
             border: 1px solid #ccc; 
             border-radius: 4px;
             display: block; 
@@ -145,28 +136,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         .btn-del-img:hover { background: #d9363e; transform: scale(1.1); }
-
-        /* --- 常用備註彈出視窗樣式 --- */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5); z-index: 1000;
-            display: flex; justify-content: center; align-items: center;
-        }
-        .modal-content {
-            background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 500px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-        .modal-content h3 { margin-top: 0; margin-bottom: 15px; text-align: center; }
-        .modal-options {
-            max-height: 300px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #eee; padding: 10px; border-radius: 4px;
-        }
-        .modal-options label {
-            display: block; margin-bottom: 10px; cursor: pointer; line-height: 1.4; padding: 5px; border-radius: 4px;
-        }
-        .modal-options label:hover { background: #f0f8ff; }
-        .modal-options input[type="checkbox"] { margin-right: 10px; transform: scale(1.2); }
-        .modal-footer { display: flex; justify-content: flex-end; gap: 10px; }
-        .modal-footer button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
 
         /* --- 列印模式樣式 --- */
         @media print {
@@ -250,8 +219,8 @@
             </tbody>
         </table>
 
-        <!-- 底部總備註區 (恢復為原本預設) -->
-        <div style="margin-top: 40px; page-break-inside: avoid;">
+        <!-- 備註區 -->
+        <div style="margin-top: 40px;">
             <h4>備註事項：</h4>
             <textarea id="notes" class="editable" style="width: 100%; height: 140px; resize: none;" placeholder="在此輸入備註" oninput="autoResize(this)">(1) 以上報價皆不含營業稅，稅金外加。
 (2) 付款條件：月結現金（恕不接受保留款）。
@@ -267,21 +236,8 @@
                 <button class="no-print" onclick="document.getElementById('imgUpload').click()" style="margin-left: 10px; padding: 4px 8px; cursor: pointer; border: 1px solid #333; background: #fff; border-radius: 4px;">➕ 新增圖片</button>
             </div>
             <input type="file" id="imgUpload" accept="image/*" style="display:none" onchange="addImage(event)">
+            <!-- 圖片會被加進這個容器內 -->
             <div id="imageContainer" style="display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 15px;">
-            </div>
-        </div>
-    </div>
-
-    <!-- 表格內用 常用備註選擇視窗 -->
-    <div id="notesModal" class="modal-overlay no-print" style="display: none;">
-        <div class="modal-content">
-            <h3>插入常用備註</h3>
-            <div class="modal-options" id="notesOptions">
-                <!-- Javascript 會動態生成核取方塊 -->
-            </div>
-            <div class="modal-footer">
-                <button onclick="closeNotesModal()" style="background: #e0e0e0; color: #333;">取消</button>
-                <button onclick="insertSelectedNotes()" style="background: #2196F3; color: white;">確定帶入</button>
             </div>
         </div>
     </div>
@@ -321,15 +277,21 @@
                 const base64Str = e.target.result;
                 renderImage(base64Str);
             };
+            // 將圖片讀取為 Base64 格式
             reader.readAsDataURL(file);
-            event.target.value = ''; 
+            event.target.value = ''; // 清空 input，讓同一張圖片可以重複選取
         }
 
         // 🖼️ 將圖片渲染到畫面上
-        function renderImage(base64Str) {
+        function renderImage(base64Str, width = '', height = '') {
             const container = document.getElementById('imageContainer');
             const div = document.createElement('div');
             div.className = 'img-preview';
+            
+            // 若有讀取到存檔的長寬，則套用至元素覆蓋預設樣式
+            if (width) div.style.width = width;
+            if (height) div.style.height = height;
+
             div.innerHTML = `
                 <button class="btn-del-img no-print" onclick="this.parentElement.remove()" title="刪除圖片">✖</button>
                 <img src="${base64Str}">
@@ -337,13 +299,14 @@
             container.appendChild(div);
         }
 
-        // 產生一列的 HTML 模板
+        // 產生一列的 HTML 模板 (加入類別 cat 參數)
         function generateRowHTML(cat='', name='', spec='', price='', qty='', note='', hasCat=true, catSpan=1, hasNote=true, noteSpan=1) {
             let catHtml = '';
             if (hasCat) {
                 catHtml = `
                 <td class="merge-cell category-cell" rowspan="${catSpan}">
                     <div class="merge-wrapper">
+                        <!-- 限制寬度讓中文字自然垂直折行 -->
                         <textarea class="editable item-cat" rows="1" placeholder="類別" oninput="autoResize(this)" style="width: 25px; text-align: center; font-weight: bold; line-height: 1.2;"></textarea>
                         ${generateToolsHtml(catSpan, '.category-cell')}
                     </div>
@@ -352,11 +315,9 @@
 
             let noteHtml = '';
             if (hasNote) {
-                // 加入 📝 按鈕，觸發時會呼叫 openNotesModal(this)
                 noteHtml = `
                 <td class="left merge-cell note-cell" rowspan="${noteSpan}">
                     <div class="merge-wrapper">
-                        <button type="button" class="no-print btn-quick-note" onclick="openNotesModal(this)" title="插入常用備註">📝</button>
                         <textarea class="editable item-note" rows="1" placeholder="備註" oninput="autoResize(this)">${note}</textarea>
                         ${generateToolsHtml(noteSpan, '.note-cell')}
                     </div>
@@ -366,8 +327,11 @@
             return `
                 <tr>
                     ${catHtml}
+                    <!-- 品項改為置中 -->
                     <td><textarea class="editable item-name" rows="1" placeholder="品項" oninput="autoResize(this)" style="text-align: center;">${name}</textarea></td>
+                    <!-- 規格改為置中 -->
                     <td><textarea class="editable item-spec" rows="1" placeholder="尺寸" oninput="autoResize(this)" style="text-align: center;">${spec}</textarea></td>
+                    <!-- 單價與數量維持原本的置中設定 -->
                     <td><textarea class="editable item-price" rows="1" placeholder="單價" oninput="autoResize(this)" style="text-align: center;">${price}</textarea></td>
                     <td><textarea class="editable item-qty" rows="1" placeholder="數量" oninput="autoResize(this)" style="text-align: center;">${qty}</textarea></td>
                     ${noteHtml}
@@ -382,6 +346,7 @@
             `;
         }
 
+        // 產生合併與切割按鈕的 HTML
         function generateToolsHtml(span, cellClass) {
             let toolsHtml = '';
             for (let i = 1; i < span; i++) {
@@ -392,6 +357,7 @@
             return toolsHtml;
         }
 
+        // 🔽 向下合併 (支援兩邊欄位共用)
         function mergeDown(btn, cellClass) {
             const td = btn.closest(cellClass);
             const tr = td.parentElement;
@@ -415,6 +381,7 @@
             }
         }
 
+        // ✂️ 切割指定位置
         function splitAt(btn, splitIndex, cellClass) {
             const td = btn.closest(cellClass);
             let span = parseInt(td.getAttribute('rowspan')) || 1;
@@ -429,24 +396,21 @@
             updateRowspanDisplay(td, cellClass);
 
             const newTd = document.createElement('td');
-            newTd.className = td.className; 
+            newTd.className = td.className; // 複製 class
             const remainingSpan = span - splitIndex;
             newTd.setAttribute('rowspan', remainingSpan);
             
             const placeholder = cellClass === '.category-cell' ? '類別' : '備註';
             const style = cellClass === '.category-cell' ? 'style="width: 25px; text-align: center; font-weight: bold; line-height: 1.2;"' : '';
             
-            // 如果切割的是備註欄，補回 📝 按鈕
-            const quickBtn = cellClass === '.note-cell' ? '<button type="button" class="no-print btn-quick-note" onclick="openNotesModal(this)" title="插入常用備註">📝</button>' : '';
-
             newTd.innerHTML = `
                 <div class="merge-wrapper">
-                    ${quickBtn}
                     <textarea class="editable ${cellClass === '.category-cell' ? 'item-cat' : 'item-note'}" rows="1" placeholder="${placeholder}" oninput="autoResize(this)" ${style}></textarea>
                     ${generateToolsHtml(remainingSpan, cellClass)}
                 </div>
             `;
             
+            // 決定插入位置：如果是備註就插在最後(action-td前面)，如果是類別就插在最前面
             if (cellClass === '.note-cell') {
                 targetTr.insertBefore(newTd, targetTr.querySelector('.action-td'));
             } else {
@@ -463,6 +427,7 @@
             wrapper.insertAdjacentHTML('beforeend', generateToolsHtml(span, cellClass));
         }
 
+        // 判斷並維護新增列時的合併狀態，回傳是否需要產生對應的 td
         function checkAndMaintainSpanForNewRow(tr, cellClass) {
             let shouldGenerateCell = true;
             let prev = tr;
@@ -472,9 +437,10 @@
                 const td = prev.querySelector(cellClass);
                 if(td) {
                     let span = parseInt(td.getAttribute('rowspan')) || 1;
+                    // 如果新增的列剛好落在這個合併儲存格的涵蓋範圍內
                     if (span > distance + 1) {
-                        shouldGenerateCell = false; 
-                        td.setAttribute('rowspan', span + 1); 
+                        shouldGenerateCell = false; // 阻斷產生多餘的 td
+                        td.setAttribute('rowspan', span + 1); // 讓母儲存格的向下合併範圍 +1
                         updateRowspanDisplay(td, cellClass); 
                     }
                     break;
@@ -485,16 +451,22 @@
             return shouldGenerateCell;
         }
 
+        // ➕ 在下方新增一列
         function addRowBelow(btn) {
             const tr = btn.closest('tr');
+            
+            // 動態判斷這列需不需要產生 類別 與 備註 的儲存格
             const hasCat = checkAndMaintainSpanForNewRow(tr, '.category-cell');
             const hasNote = checkAndMaintainSpanForNewRow(tr, '.note-cell');
+            
             const newTrHTML = generateRowHTML('', '', '', '', '', '', hasCat, 1, hasNote, 1);
             tr.insertAdjacentHTML('afterend', newTrHTML);
+            
             const newTr = tr.nextElementSibling;
             newTr.querySelectorAll('textarea').forEach(ta => autoResize(ta));
         }
 
+        // 📄 複製整列
         function copyRow(btn) {
             const tr = btn.closest('tr');
             const cat = tr.querySelector('.item-cat')?.value || '';
@@ -504,6 +476,7 @@
             const qty = tr.querySelector('.item-qty')?.value || '';
             const note = tr.querySelector('.item-note')?.value || '';
             
+            // 動態判斷這列需不需要產生 類別 與 備註 的儲存格
             const hasCat = checkAndMaintainSpanForNewRow(tr, '.category-cell');
             const hasNote = checkAndMaintainSpanForNewRow(tr, '.note-cell');
             
@@ -514,12 +487,14 @@
             newTr.querySelectorAll('textarea').forEach(ta => autoResize(ta));
         }
 
+        // 維護刪除列時的跨列狀態
         function maintainSpanOnDel(tr, cellClass) {
             const hasCell = tr.querySelector(cellClass) !== null;
             if (hasCell) {
                 const td = tr.querySelector(cellClass);
                 const span = parseInt(td.getAttribute('rowspan')) || 1;
                 if (span > 1) {
+                    // 如果刪除了母儲存格，需要把子儲存格補回下一列
                     let nextTr = tr.nextElementSibling;
                     const newTd = document.createElement('td');
                     newTd.className = td.className;
@@ -552,18 +527,24 @@
             }
         }
 
+        // 🗑️ 刪除一列
         function delRow(btn) {
+            // 取得表格本體
             const tbody = document.getElementById('tableBody');
+            
+            // 檢查目前表格內有幾行，如果小於等於1行，跳出警告並阻斷刪除
             if (tbody.querySelectorAll('tr').length <= 1) {
                 alert("不可刪除最後一行");
-                return; 
+                return; // 終止函數執行，保護最後一行不被刪除
             }
+
             const tr = btn.closest('tr');
             maintainSpanOnDel(tr, '.category-cell');
             maintainSpanOnDel(tr, '.note-cell');
             tr.remove();
         }
 
+        // 💾 儲存資料
         function saveData() {
             const data = {
                 cusName: document.getElementById('cusName').value,
@@ -571,7 +552,7 @@
                 quoteDate: document.getElementById('quoteDate').value,
                 notes: document.getElementById('notes').value,
                 items: [],
-                images: [] 
+                images: [] // 新增這行：用來存圖片
             };
 
             const rows = document.querySelectorAll('#tableBody tr');
@@ -592,8 +573,15 @@
                 });
             });
 
-            document.querySelectorAll('#imageContainer img').forEach(img => {
-                data.images.push(img.src);
+            // 新增這段：抓取畫面上所有的圖片 Base64 以及容器當前長寬，存入陣列
+            document.querySelectorAll('#imageContainer .img-preview').forEach(div => {
+                const img = div.querySelector('img');
+                data.images.push({
+                    src: img.src,
+                    // 抓取拖拉後的實際像素大小並加上 'px'
+                    width: div.style.width || (div.offsetWidth + 'px'),
+                    height: div.style.height || (div.offsetHeight + 'px')
+                });
             });
 
             const dataStr = JSON.stringify(data, null, 2);
@@ -606,6 +594,7 @@
             URL.revokeObjectURL(url);
         }
 
+        // 📂 載入資料 (相容沒有 Cat 的舊檔案)
         function loadData(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -622,6 +611,7 @@
                 tbody.innerHTML = ''; 
                 
                 data.items.forEach(item => {
+                    // 如果是舊檔，預設給予獨立的分類欄位(hasCat=true, catSpan=1)
                     const hasCat = item.hasCat !== undefined ? item.hasCat : true;
                     const catSpan = item.catSpan || 1;
                     const hasNote = item.hasNote !== undefined ? item.hasNote : true;
@@ -634,84 +624,23 @@
                     tbody.insertAdjacentHTML('beforeend', newTr);
                 });
                 
+                // 新增這段：清空現有圖片並載入舊圖片
                 document.getElementById('imageContainer').innerHTML = '';
                 if (data.images && data.images.length > 0) {
-                    data.images.forEach(base64Str => renderImage(base64Str));
+                    data.images.forEach(imgData => {
+                        // 相容性處理：判斷是舊存檔(單純字串)還是新存檔(包含長寬的物件)
+                        if (typeof imgData === 'string') {
+                            renderImage(imgData); // 舊版格式
+                        } else {
+                            renderImage(imgData.src, imgData.width, imgData.height); // 新版格式
+                        }
+                    });
                 }
 
                 document.querySelectorAll('textarea.editable').forEach(ta => autoResize(ta));
                 event.target.value = ''; 
             };
             reader.readAsText(file);
-        }
-
-        // --- 表格內專用的常用備註邏輯 ---
-
-        // 📝 表格內常用備註資料庫 (為您的木業/門片工程預設)
-        const commonNotes = [
-            "▲含立斗",
-            "▲含氣密條",
-            "▲無油漆",
-            "▲含安裝五金-自解水平鎖、烤漆雕花丁雙、塑膠門擋(咖)",
-            "▲無門邊油漆",
-            "▲含安裝五金-自解水平鎖、廁所專用丁雙",
-            "▲",
-            
-        ];
-
-        let currentTargetNote = null; // 紀錄當前點擊的是哪一個格子的備註
-
-        // 開啟備註選擇視窗
-        function openNotesModal(btn) {
-            // 找到同一個 wrapper 內的 textarea 元素
-            currentTargetNote = btn.parentElement.querySelector('.item-note');
-            
-            const container = document.getElementById('notesOptions');
-            container.innerHTML = ''; // 清空先前的選項
-            
-            commonNotes.forEach((note, index) => {
-                const label = document.createElement('label');
-                label.innerHTML = `<input type="checkbox" value="${index}"> ${note}`;
-                container.appendChild(label);
-            });
-            
-            document.getElementById('notesModal').style.display = 'flex';
-        }
-
-        // 關閉備註選擇視窗
-        function closeNotesModal() {
-            document.getElementById('notesModal').style.display = 'none';
-            currentTargetNote = null; // 清除紀錄
-        }
-
-        // 確認帶入所選備註
-        function insertSelectedNotes() {
-            if (!currentTargetNote) return;
-
-            const checkboxes = document.querySelectorAll('#notesOptions input:checked');
-            if (checkboxes.length === 0) {
-                closeNotesModal();
-                return;
-            }
-            
-            let currentText = currentTargetNote.value.trim();
-            let additions = [];
-            
-            // 抓取打勾的文字
-            checkboxes.forEach(cb => {
-                additions.push(commonNotes[cb.value]);
-            });
-
-            // 將文字換行附加進去，不覆蓋原來的字
-            if (currentText.length > 0) {
-                currentText += '\n' + additions.join('\n');
-            } else {
-                currentText = additions.join('\n');
-            }
-
-            currentTargetNote.value = currentText;
-            autoResize(currentTargetNote); // 自動撐高格子
-            closeNotesModal();
         }
     </script>
 </body>
