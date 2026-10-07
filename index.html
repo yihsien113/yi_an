@@ -544,15 +544,15 @@
             tr.remove();
         }
 
-        // 💾 儲存資料
-        function saveData() {
+        // 💾 儲存資料 (使用 File System Access API 讓使用者選擇路徑)
+        async function saveData() {
             const data = {
                 cusName: document.getElementById('cusName').value,
                 cusPhone: document.getElementById('cusPhone').value,
                 quoteDate: document.getElementById('quoteDate').value,
                 notes: document.getElementById('notes').value,
                 items: [],
-                images: [] // 新增這行：用來存圖片
+                images: []
             };
 
             const rows = document.querySelectorAll('#tableBody tr');
@@ -573,12 +573,10 @@
                 });
             });
 
-            // 新增這段：抓取畫面上所有的圖片 Base64 以及容器當前長寬，存入陣列
             document.querySelectorAll('#imageContainer .img-preview').forEach(div => {
                 const img = div.querySelector('img');
                 data.images.push({
                     src: img.src,
-                    // 抓取拖拉後的實際像素大小並加上 'px'
                     width: div.style.width || (div.offsetWidth + 'px'),
                     height: div.style.height || (div.offsetHeight + 'px')
                 });
@@ -586,10 +584,42 @@
 
             const dataStr = JSON.stringify(data, null, 2);
             const blob = new Blob([dataStr], { type: "application/json" });
+            const defaultFileName = `報價單_${data.cusName || '未命名'}.json`;
+
+            // 判斷瀏覽器是否支援 showSaveFilePicker API (主流電腦版 Chrome/Edge 支援)
+            if (window.showSaveFilePicker) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: defaultFileName,
+                        types: [{
+                            description: 'JSON 專案檔',
+                            accept: { 'application/json': ['.json'] },
+                        }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    return; // 儲存成功
+                } catch (err) {
+                    // 如果使用者點擊取消，AbortError 是正常的，不需警告
+                    if (err.name !== 'AbortError') {
+                        console.error('儲存失敗:', err);
+                        fallbackDownload(blob, defaultFileName);
+                    }
+                    return;
+                }
+            } else {
+                // 若為手機或不支援的瀏覽器，退回原本的下載模式
+                fallbackDownload(blob, defaultFileName);
+            }
+        }
+
+        // 傳統下載模式 (備用)
+        function fallbackDownload(blob, fileName) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `報價單_${data.cusName || '未命名'}.json`;
+            a.download = fileName;
             a.click();
             URL.revokeObjectURL(url);
         }
@@ -611,7 +641,6 @@
                 tbody.innerHTML = ''; 
                 
                 data.items.forEach(item => {
-                    // 如果是舊檔，預設給予獨立的分類欄位(hasCat=true, catSpan=1)
                     const hasCat = item.hasCat !== undefined ? item.hasCat : true;
                     const catSpan = item.catSpan || 1;
                     const hasNote = item.hasNote !== undefined ? item.hasNote : true;
@@ -624,15 +653,13 @@
                     tbody.insertAdjacentHTML('beforeend', newTr);
                 });
                 
-                // 新增這段：清空現有圖片並載入舊圖片
                 document.getElementById('imageContainer').innerHTML = '';
                 if (data.images && data.images.length > 0) {
                     data.images.forEach(imgData => {
-                        // 相容性處理：判斷是舊存檔(單純字串)還是新存檔(包含長寬的物件)
                         if (typeof imgData === 'string') {
-                            renderImage(imgData); // 舊版格式
+                            renderImage(imgData); 
                         } else {
-                            renderImage(imgData.src, imgData.width, imgData.height); // 新版格式
+                            renderImage(imgData.src, imgData.width, imgData.height); 
                         }
                     });
                 }
