@@ -582,9 +582,17 @@
                 });
             });
 
-            const dataStr = JSON.stringify(data, null, 2);
+           const dataStr = JSON.stringify(data, null, 2);
             const blob = new Blob([dataStr], { type: "application/json" });
-            const defaultFileName = `報價單_${data.cusName || '未命名'}.json`;
+            
+            // 取得當下的年月日 (格式如：20261008)
+            const now = new Date();
+            const dateStr = now.getFullYear() + 
+                            String(now.getMonth() + 1).padStart(2, '0') + 
+                            String(now.getDate()).padStart(2, '0');
+
+            // 檔名改為：輸入的名稱_年月日.json
+            const defaultFileName = `${data.cusName || '未命名'}_${dateStr}.json`;
 
             // 判斷瀏覽器是否支援 showSaveFilePicker API (主流電腦版 Chrome/Edge 支援)
             if (window.showSaveFilePicker) {
