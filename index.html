@@ -307,7 +307,8 @@
                 <td class="merge-cell category-cell" rowspan="${catSpan}">
                     <div class="merge-wrapper">
                         <!-- 限制寬度讓中文字自然垂直折行 -->
-                        <textarea class="editable item-cat" rows="1" placeholder="類別" oninput="autoResize(this)" style="width: 25px; text-align: center; font-weight: bold; line-height: 1.2;"></textarea>
+                        
+                        <textarea class="editable item-cat" rows="1" placeholder="類別" oninput="autoResize(this)" style="width: 25px; text-align: center; font-weight: bold; line-height: 1.2;">${cat}</textarea>
                         ${generateToolsHtml(catSpan, '.category-cell')}
                     </div>
                 </td>`;
